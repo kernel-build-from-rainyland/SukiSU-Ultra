@@ -756,111 +756,103 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
 #else
 	// flex_array is not extensible, we need to create a new bigger one instead
 	struct flex_array *new_type_attr_map_array =
-		flex_array_alloc(sizeof(struct ebitmap), db->p_types.nprim,
-				 GFP_ATOMIC | __GFP_ZERO);
-
+	    flex_array_alloc(sizeof(struct ebitmap), db->p_types.nprim,
+	                     GFP_ATOMIC | __GFP_ZERO);
+	
 	struct flex_array *new_type_val_to_struct =
-		flex_array_alloc(sizeof(struct type_datum *), db->p_types.nprim,
-				 GFP_ATOMIC | __GFP_ZERO);
-
+	    flex_array_alloc(sizeof(struct type_datum *), db->p_types.nprim,
+	                     GFP_ATOMIC | __GFP_ZERO);
+	
 	struct flex_array *new_val_to_name_types =
-		flex_array_alloc(sizeof(char *), db->symtab[SYM_TYPES].nprim,
-				 GFP_ATOMIC | __GFP_ZERO);
-
+	    flex_array_alloc(sizeof(char *), db->symtab[SYM_TYPES].nprim,
+	                     GFP_ATOMIC | __GFP_ZERO);
+	
 	if (!new_type_attr_map_array) {
-		pr_err("add_type: alloc type_attr_map_array failed\n");
-		return false;
+	    pr_err("add_type: alloc type_attr_map_array failed\n");
+	    return false;
 	}
-
+	
 	if (!new_type_val_to_struct) {
-		pr_err("add_type: alloc type_val_to_struct failed\n");
-		return false;
+	    pr_err("add_type: alloc type_val_to_struct failed\n");
+	    return false;
 	}
-
+	
 	if (!new_val_to_name_types) {
-		pr_err("add_type: alloc val_to_name failed\n");
-		return false;
+	    pr_err("add_type: alloc val_to_name failed\n");
+	    return false;
 	}
-
+	
 	// preallocate so we don't have to worry about the put ever failing
 	if (flex_array_prealloc(new_type_attr_map_array, 0, db->p_types.nprim,
-				GFP_ATOMIC | __GFP_ZERO)) {
-		pr_err("add_type: prealloc type_attr_map_array failed\n");
-		return false;
+	            GFP_ATOMIC | __GFP_ZERO)) {
+	    pr_err("add_type: prealloc type_attr_map_array failed\n");
+	    return false;
 	}
-
+	
 	if (flex_array_prealloc(new_type_val_to_struct, 0, db->p_types.nprim,
-				GFP_ATOMIC | __GFP_ZERO)) {
-		pr_err("add_type: prealloc type_val_to_struct_array failed\n");
-		return false;
+	            GFP_ATOMIC | __GFP_ZERO)) {
+	    pr_err("add_type: prealloc type_val_to_struct_array failed\n");
+	    return false;
 	}
-
+	
 	if (flex_array_prealloc(new_val_to_name_types, 0,
-				db->symtab[SYM_TYPES].nprim,
-				GFP_ATOMIC | __GFP_ZERO)) {
-		pr_err("add_type: prealloc val_to_name_types failed\n");
-		return false;
+	            db->symtab[SYM_TYPES].nprim,
+	            GFP_ATOMIC | __GFP_ZERO)) {
+	    pr_err("add_type: prealloc val_to_name_types failed\n");
+	    return false;
 	}
-
+	
 	int j;
 	void *old_elem;
-	// copy the old data or pointers to new flex arrays
-	for (j = 0; j < db->type_attr_map_array->total_nr_elements; j++) {
-		old_elem = flex_array_get(db->type_attr_map_array, j);
-		if (old_elem)
-			flex_array_put(new_type_attr_map_array, j, old_elem,
-				       GFP_ATOMIC | __GFP_ZERO);
+	int old_nr = db->p_types.nprim - 1;
+	// Copy old type_attr_map_array
+	if (db->type_attr_map_array) {
+	    for (j = 0; j < old_nr; j++) {
+	        old_elem = flex_array_get(db->type_attr_map_array, j);
+	        if (old_elem)
+	            flex_array_put(new_type_attr_map_array, j, old_elem,
+	                       GFP_ATOMIC | __GFP_ZERO);
+	    }
+	    flex_array_free(db->type_attr_map_array);
 	}
-
-	for (j = 0; j < db->type_val_to_struct_array->total_nr_elements; j++) {
-		old_elem = flex_array_get_ptr(db->type_val_to_struct_array, j);
-		if (old_elem)
-			flex_array_put_ptr(new_type_val_to_struct, j, old_elem,
-					   GFP_ATOMIC | __GFP_ZERO);
+	// Copy old type_val_to_struct_array
+	if (db->type_val_to_struct_array) {
+	    for (j = 0; j < old_nr; j++) {
+	        old_elem = flex_array_get_ptr(db->type_val_to_struct_array, j);
+	        if (old_elem)
+	            flex_array_put_ptr(new_type_val_to_struct, j, old_elem,
+	                       GFP_ATOMIC | __GFP_ZERO);
+	    }
+	    flex_array_free(db->type_val_to_struct_array);
 	}
-
-	for (j = 0; j < db->symtab[SYM_TYPES].nprim; j++) {
-		old_elem =
-			flex_array_get_ptr(db->sym_val_to_name[SYM_TYPES], j);
-		if (old_elem)
-			flex_array_put_ptr(new_val_to_name_types, j, old_elem,
-					   GFP_ATOMIC | __GFP_ZERO);
+	// Copy old sym_val_to_name[SYM_TYPES]
+	if (db->sym_val_to_name[SYM_TYPES]) {
+	    for (j = 0; j < old_nr; j++) {
+	        old_elem =
+	            flex_array_get_ptr(db->sym_val_to_name[SYM_TYPES], j);
+	        if (old_elem)
+	            flex_array_put_ptr(new_val_to_name_types, j, old_elem,
+	                       GFP_ATOMIC | __GFP_ZERO);
+	    }
+	    flex_array_free(db->sym_val_to_name[SYM_TYPES]);
 	}
-
-	// store the pointer of old flex arrays first, when assigning new ones we
-	// should free it
-	struct flex_array *old_fa;
-
-	old_fa = db->type_attr_map_array;
+	
 	db->type_attr_map_array = new_type_attr_map_array;
-	if (old_fa) {
-		flex_array_free(old_fa);
-	}
-
 	ebitmap_init(flex_array_get(db->type_attr_map_array, value - 1));
 	ebitmap_set_bit(flex_array_get(db->type_attr_map_array, value - 1),
-			value - 1, 1);
-
-	old_fa = db->type_val_to_struct_array;
+	        value - 1, 1);
+	
 	db->type_val_to_struct_array = new_type_val_to_struct;
-	if (old_fa) {
-		flex_array_free(old_fa);
-	}
 	flex_array_put_ptr(db->type_val_to_struct_array, value - 1, type,
-			   GFP_ATOMIC | __GFP_ZERO);
-
-	old_fa = db->sym_val_to_name[SYM_TYPES];
+	           GFP_ATOMIC | __GFP_ZERO);
+	
 	db->sym_val_to_name[SYM_TYPES] = new_val_to_name_types;
-	if (old_fa) {
-		flex_array_free(old_fa);
-	}
 	flex_array_put_ptr(db->sym_val_to_name[SYM_TYPES], value - 1, key,
-			   GFP_ATOMIC | __GFP_ZERO);
-
-	int i;
-	for (i = 0; i < db->p_roles.nprim; ++i) {
-		ebitmap_set_bit(&db->role_val_to_struct[i]->types, value - 1,
-				1);
+	           GFP_ATOMIC | __GFP_ZERO);
+	
+	for (int i = 0; i < db->p_roles.nprim; ++i) {
+	    ebitmap_set_bit(&db->role_val_to_struct[i]->types, value - 1,
+	            1);
 	}
 	return true;
 #endif
