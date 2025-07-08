@@ -767,20 +767,39 @@ static bool add_type(struct policydb *db, const char *type_name, bool attr)
 		flex_array_alloc(sizeof(char *), db->symtab[SYM_TYPES].nprim,
 				 GFP_ATOMIC | __GFP_ZERO);
 
+	// Allocate or grow ebitmap* array
+	struct ebitmap *new_type_attr_map_array =
+	    krealloc(db->type_attr_map_array, value * sizeof(struct ebitmap), GFP_ATOMIC);
 	if (!new_type_attr_map_array) {
 		pr_err("add_type: alloc type_attr_map_array failed\n");
 		return false;
 	}
 
+	// Allocate or grow type_datum** array
+	struct type_datum **new_type_val_to_struct_array =
+	    krealloc(db->type_val_to_struct_array, value * sizeof(struct type_datum *), GFP_ATOMIC);
 	if (!new_type_val_to_struct) {
 		pr_err("add_type: alloc type_val_to_struct failed\n");
 		return false;
 	}
 
+	char **new_val_to_name_types =
+	    krealloc(db->sym_val_to_name[SYM_TYPES], value * sizeof(char *), GFP_ATOMIC);
 	if (!new_val_to_name_types) {
 		pr_err("add_type: alloc val_to_name failed\n");
 		return false;
 	}
+
+	// Assign new pointers
+	db->type_attr_map_array = new_type_attr_map_array;
+	ebitmap_init(&db->type_attr_map_array[value - 1]);
+	ebitmap_set_bit(&db->type_attr_map_array[value - 1], value - 1, 1);
+	
+	db->type_val_to_struct_array = new_type_val_to_struct_array;
+	db->type_val_to_struct_array[value - 1] = type;
+	
+	db->sym_val_to_name[SYM_TYPES] = new_val_to_name_types;
+	db->sym_val_to_name[SYM_TYPES][value - 1] = key;
 
 	// preallocate so we don't have to worry about the put ever failing
 	if (flex_array_prealloc(new_type_attr_map_array, 0, db->p_types.nprim,
