@@ -508,7 +508,33 @@ static void sulog_prctl_cmd(uid_t uid, unsigned long cmd)
 {
     const char *name = NULL;
 
-    switch (cmd) {
+	switch (cmd) {
+	case CMD_GRANT_ROOT:                    name = "prctl_grant_root"; break;
+	case CMD_BECOME_MANAGER:                name = "prctl_become_manager"; break;
+	case CMD_GET_VERSION:                   name = "prctl_get_version"; break;
+	case CMD_GET_FULL_VERSION:              name = "prctl_get_full_version"; break;
+	case CMD_SET_SEPOLICY:                  name = "prctl_set_sepolicy"; break;
+	case CMD_CHECK_SAFEMODE:                name = "prctl_check_safemode"; break;
+	case CMD_GET_ALLOW_LIST:                name = "prctl_get_allow_list"; break;
+	case CMD_GET_DENY_LIST:                 name = "prctl_get_deny_list"; break;
+	case CMD_UID_GRANTED_ROOT:              name = "prctl_uid_granted_root"; break;
+	case CMD_UID_SHOULD_UMOUNT:             name = "prctl_uid_should_umount"; break;
+	case CMD_IS_SU_ENABLED:                 name = "prctl_is_su_enabled"; break;
+	case CMD_ENABLE_SU:                     name = "prctl_enable_su"; break;
+#ifdef CONFIG_KPM
+	case CMD_ENABLE_KPM:                    name = "prctl_enable_kpm"; break;
+#endif
+	case CMD_HOOK_TYPE:                     name = "prctl_hook_type"; break;
+	case CMD_DYNAMIC_MANAGER:               name = "prctl_dynamic_manager"; break;
+	case CMD_GET_MANAGERS:                  name = "prctl_get_managers"; break;
+	case CMD_ENABLE_UID_SCANNER:            name = "prctl_enable_uid_scanner"; break;
+	case CMD_REPORT_EVENT:                  name = "prctl_report_event"; break;
+	case CMD_SET_APP_PROFILE:               name = "prctl_set_app_profile"; break;
+	case CMD_GET_APP_PROFILE:               name = "prctl_get_app_profile"; break;
+
+#ifdef CONFIG_KSU_MANUAL_SU
+	case CMD_MANUAL_SU_REQUEST:             name = "prctl_manual_su_request"; break;
+#endif
 
 #ifdef CONFIG_KSU_SUSFS
     case CMD_SUSFS_ADD_SUS_PATH:            name = "prctl_susfs_add_sus_path"; break;
@@ -549,6 +575,10 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
              unsigned long arg4, unsigned long arg5)
 {
 
+	bool is_manual_su_cmd = false;
+#ifdef CONFIG_KSU_MANUAL_SU
+	is_manual_su_cmd = (arg2 == CMD_MANUAL_SU_REQUEST);
+#endif
 
 #ifdef CONFIG_KSU_SUSFS
     // - We straight up check if process is supposed to be umounted, return 0 if so
@@ -579,7 +609,337 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
     }
 
 #ifdef CONFIG_KSU_DEBUG
-    pr_info("option: 0x%x, cmd: %ld\n", option, arg2);
+	pr_info("option: 0x%x, cmd: %ld\n", option, arg2);
+#endif
+
+	if (arg2 == CMD_BECOME_MANAGER) {
+		if (from_manager) {
+			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+				pr_err("become_manager: prctl reply error\n");
+			}
+			return 0;
+		}
+		return 0;
+	}
+
+	if (arg2 == CMD_GRANT_ROOT) {
+#if __SULOG_GATE
+		bool is_allowed = is_allow_su();
+		ksu_sulog_report_permission_check(current_uid().val, current->comm, is_allowed);
+		if (is_allowed) {
+#else
+		if (is_allow_su()) {
+#endif
+			pr_info("allow root for: %d\n", current_uid().val);
+			escape_to_root();
+			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+				pr_err("grant_root: prctl reply error\n");
+			}
+		}
+		return 0;
+	}
+
+	// Both root manager and root processes should be allowed to get version
+	if (arg2 == CMD_GET_VERSION) {
+		u32 version = KERNEL_SU_VERSION;
+		if (copy_to_user(arg3, &version, sizeof(version))) {
+			pr_err("prctl reply error, cmd: %lu\n", arg2);
+		}
+		u32 version_flags = 2;
+#ifdef MODULE
+		version_flags |= 0x1;
+#endif
+		if (arg4 &&
+		    copy_to_user(arg4, &version_flags, sizeof(version_flags))) {
+			pr_err("prctl reply error, cmd: %lu\n", arg2);
+		}
+		return 0;
+	}
+
+	// Allow root manager to get full version strings
+	if (arg2 == CMD_GET_FULL_VERSION) {
+		char ksu_version_full[KSU_FULL_VERSION_STRING] = {0};
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)
+		strscpy(ksu_version_full, KSU_VERSION_FULL, KSU_FULL_VERSION_STRING);
+#else
+		strlcpy(ksu_version_full, KSU_VERSION_FULL, KSU_FULL_VERSION_STRING);
+#endif
+		if (copy_to_user((void __user *)arg3, ksu_version_full, KSU_FULL_VERSION_STRING)) {
+			pr_err("prctl reply error, cmd: %lu\n", arg2);
+			return -EFAULT;
+		}
+		return 0;
+	}
+
+	// Allow the root manager to configure dynamic manageratures
+	if (arg2 == CMD_DYNAMIC_MANAGER) {
+    	if (!from_root && !from_manager) {
+        	return 0;
+    	}
+    
+    	struct dynamic_manager_user_config config;
+    
+    	if (copy_from_user(&config, (void __user *)arg3, sizeof(config))) {
+        	pr_err("copy dynamic manager config failed\n");
+        	return 0;
+    	}
+    
+    	int ret = ksu_handle_dynamic_manager(&config);
+    	
+    	if (ret == 0 && config.operation == DYNAMIC_MANAGER_OP_GET) {
+        	if (copy_to_user((void __user *)arg3, &config, sizeof(config))) {
+            	pr_err("copy dynamic manager config back failed\n");
+            	return 0;
+        	}
+    	}
+    	
+    	if (ret == 0) {
+        	if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+            	pr_err("dynamic_manager: prctl reply error\n");
+        	}
+    	}
+    	return 0;
+	}
+
+	// Allow root manager to get active managers
+	if (arg2 == CMD_GET_MANAGERS) {
+		if (!from_root && !from_manager) {
+			return 0;
+		}
+		
+		struct manager_list_info manager_info;
+		int ret = ksu_get_active_managers(&manager_info);
+		
+		if (ret == 0) {
+			if (copy_to_user((void __user *)arg3, &manager_info, sizeof(manager_info))) {
+				pr_err("copy manager list failed\n");
+				return 0;
+			}
+			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+				pr_err("get_managers: prctl reply error\n");
+			}
+		}
+		return 0;
+	}
+
+	if (arg2 == CMD_REPORT_EVENT) {
+		if (!from_root) {
+			return 0;
+		}
+		switch (arg3) {
+		case EVENT_POST_FS_DATA: {
+			static bool post_fs_data_lock = false;
+			if (!post_fs_data_lock) {
+				post_fs_data_lock = true;
+				pr_info("post-fs-data triggered\n");
+#ifdef CONFIG_KSU_SUSFS
+				susfs_on_post_fs_data();
+#endif
+				on_post_fs_data();
+#if __SULOG_GATE
+				ksu_sulog_init();
+#endif
+				// Initialize UID scanner if enabled
+				init_uid_scanner();
+				// Initializing Dynamic Signatures
+        		ksu_dynamic_manager_init();
+        		pr_info("Dynamic sign config loaded during post-fs-data\n");
+			}
+			break;
+		}
+		case EVENT_BOOT_COMPLETED: {
+			static bool boot_complete_lock = false;
+			if (!boot_complete_lock) {
+				boot_complete_lock = true;
+				pr_info("boot_complete triggered\n");
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+				susfs_is_boot_completed_triggered = true;
+#endif
+
+			}
+			break;
+		}
+		case EVENT_MODULE_MOUNTED: {
+			ksu_module_mounted = true;
+			pr_info("module mounted!\n");
+			nuke_ext4_sysfs();
+			break;
+		}
+		default:
+			break;
+		}
+		return 0;
+	}
+
+	if (arg2 == CMD_SET_SEPOLICY) {
+		if (!from_root) {
+			return 0;
+		}
+		if (!handle_sepolicy(arg3, arg4)) {
+			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+				pr_err("sepolicy: prctl reply error\n");
+			}
+		}
+
+		return 0;
+	}
+
+	if (arg2 == CMD_CHECK_SAFEMODE) {
+		if (ksu_is_safe_mode()) {
+			pr_warn("safemode enabled!\n");
+			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+				pr_err("safemode: prctl reply error\n");
+			}
+		}
+		return 0;
+	}
+
+	if (arg2 == CMD_GET_ALLOW_LIST || arg2 == CMD_GET_DENY_LIST) {
+		u32 array[128];
+		u32 array_length;
+		bool success = ksu_get_allow_list(array, &array_length,
+						  arg2 == CMD_GET_ALLOW_LIST);
+		if (success) {
+			if (!copy_to_user(arg4, &array_length,
+					  sizeof(array_length)) &&
+			    !copy_to_user(arg3, array,
+					  sizeof(u32) * array_length)) {
+				if (copy_to_user(result, &reply_ok,
+						 sizeof(reply_ok))) {
+					pr_err("prctl reply error, cmd: %lu\n",
+					       arg2);
+				}
+			} else {
+				pr_err("prctl copy allowlist error\n");
+			}
+		}
+		return 0;
+	}
+
+	if (arg2 == CMD_UID_GRANTED_ROOT || arg2 == CMD_UID_SHOULD_UMOUNT) {
+		uid_t target_uid = (uid_t)arg3;
+		bool allow = false;
+		if (arg2 == CMD_UID_GRANTED_ROOT) {
+			allow = ksu_is_allow_uid(target_uid);
+		} else if (arg2 == CMD_UID_SHOULD_UMOUNT) {
+			allow = ksu_uid_should_umount(target_uid);
+		} else {
+			pr_err("unknown cmd: %lu\n", arg2);
+		}
+		if (!copy_to_user(arg4, &allow, sizeof(allow))) {
+			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+				pr_err("prctl reply error, cmd: %lu\n", arg2);
+			}
+		} else {
+			pr_err("prctl copy err, cmd: %lu\n", arg2);
+		}
+		return 0;
+	}
+
+#ifdef CONFIG_KPM
+	// ADD: 添加KPM模块控制
+	if(sukisu_is_kpm_control_code(arg2)) {
+		int res;
+
+		pr_info("KPM: calling before arg2=%d\n", (int) arg2);
+		
+		res = sukisu_handle_kpm(arg2, arg3, arg4, arg5);
+
+		return 0;
+	}
+#endif
+
+	if (arg2 == CMD_ENABLE_SU) {
+		bool enabled = (arg3 != 0);
+		if (enabled == ksu_su_compat_enabled) {
+			pr_info("cmd enable su but no need to change.\n");
+			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {// return the reply_ok directly
+				pr_err("prctl reply error, cmd: %lu\n", arg2);
+			}
+			return 0;
+		}
+
+		if (enabled) {
+#ifdef CONFIG_KSU_SUSFS_SUS_SU
+			// We disable all sus_su hook whenever user toggle on su_kps
+			susfs_is_sus_su_hooks_enabled = false;
+			ksu_devpts_hook = false;
+			susfs_sus_su_working_mode = SUS_SU_DISABLED;
+#endif
+			ksu_sucompat_init();
+		} else {
+			ksu_sucompat_exit();
+		}
+		ksu_su_compat_enabled = enabled;
+
+		if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+			pr_err("prctl reply error, cmd: %lu\n", arg2);
+		}
+
+		return 0;
+	}
+
+	// Check if kpm is enabled
+	if (arg2 == CMD_ENABLE_KPM) {
+    	bool KPM_Enabled = IS_ENABLED(CONFIG_KPM);
+    	if (copy_to_user((void __user *)arg3, &KPM_Enabled, sizeof(KPM_Enabled)))
+        	pr_info("KPM: copy_to_user() failed\n");
+    	return 0;
+	}
+
+	// Checking hook usage
+	if (arg2 == CMD_HOOK_TYPE) {
+		const char *hook_type;
+		
+#if defined(CONFIG_KSU_KPROBES_HOOK)
+		hook_type = "Kprobes";
+#elif defined(CONFIG_KSU_TRACEPOINT_HOOK)
+		hook_type = "Tracepoint";
+#elif defined(CONFIG_KSU_MANUAL_HOOK)
+		hook_type = "Manual";
+#else
+		hook_type = "Unknown";
+#endif
+		
+		size_t len = strlen(hook_type) + 1;
+		if (copy_to_user((void __user *)arg3, hook_type, len)) {
+			pr_err("hook_type: copy_to_user failed\n");
+			return 0;
+		}
+		
+		if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+			pr_err("hook_type: prctl reply error\n");
+		}
+		return 0;
+	}
+
+#ifdef CONFIG_KSU_MANUAL_SU
+	if (arg2 == CMD_MANUAL_SU_REQUEST) {
+		struct manual_su_request request;
+		int su_option = (int)arg3;
+		
+		if (copy_from_user(&request, (void __user *)arg4, sizeof(request))) {
+			pr_err("manual_su: failed to copy request from user\n");
+			return 0;
+		}
+
+		int ret = ksu_handle_manual_su_request(su_option, &request);
+
+		// Copy back result for token generation
+		if (ret == 0 && su_option == MANUAL_SU_OP_GENERATE_TOKEN) {
+			if (copy_to_user((void __user *)arg4, &request, sizeof(request))) {
+				pr_err("manual_su: failed to copy request back to user\n");
+				return 0;
+			}
+		}
+		
+		if (ret == 0) {
+			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
+				pr_err("manual_su: prctl reply error\n");
+			}
+		}
+		return 0;
+	}
 #endif
 
 #ifdef CONFIG_KSU_SUSFS

@@ -231,9 +231,9 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
         return 0;
     
 #if __SULOG_GATE
-    ksu_sulog_report_syscall(current_uid().val, NULL, "execve", filename->name);
+	ksu_sulog_report_syscall(current_uid().val, NULL, "execve", filename->name);
 #ifndef CONFIG_KSU_SUSFS_SUS_SU
-    bool is_allowed = ksu_is_allow_uid(current_uid().val);
+	bool is_allowed = ksu_is_allow_uid(current_uid().val);
 #endif
 #endif
 
