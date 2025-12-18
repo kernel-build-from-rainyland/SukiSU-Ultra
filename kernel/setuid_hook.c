@@ -54,6 +54,9 @@ extern void susfs_run_sus_path_loop(uid_t uid);
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 extern void susfs_reorder_mnt_id(void);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+extern void susfs_try_umount(uid_t uid);
+#endif
 #endif // #ifdef CONFIG_KSU_SUSFS
 
 static bool ksu_enhanced_security_enabled = false;
@@ -271,8 +274,20 @@ int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid)
 #endif
 
 do_umount:
+#ifndef CONFIG_KSU_SUSFS_TRY_UMOUNT
+	if (!ksu_kernel_umount_enabled || !ksu_module_mounted) {
+		goto skip_ksu_handle_umount;
+		
+	}
 	// Handle kernel umount
 	ksu_handle_umount(old_uid, new_uid);
+
+skip_ksu_handle_umount:
+#else
+    susfs_try_umount(new_uid);
+#endif // #ifndef CONFIG_KSU_SUSFS_TRY_UMOUNT
+
+	get_task_struct(current);
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	// We can reorder the mnt_id now after all sus mounts are umounted
