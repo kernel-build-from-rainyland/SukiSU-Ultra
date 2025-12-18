@@ -110,8 +110,6 @@ void try_umount(const char *mnt, int flags)
 	}
 }
 
-
-#if !defined(CONFIG_KSU_SUSFS) || !defined(CONFIG_KSU_SUSFS_TRY_UMOUNT)
 struct umount_tw {
 	struct callback_head cb;
 };
