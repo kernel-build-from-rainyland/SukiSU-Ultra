@@ -126,6 +126,14 @@ struct ksu_enable_kpm_cmd {
 	__u8 enabled; // Output: true if KPM is enabled
 };
 
+struct ksu_get_hook_mode_cmd {
+	char mode[32];
+};
+
+struct ksu_get_version_tag_cmd {
+	char tag[32];
+};
+
 struct ksu_dynamic_manager_cmd {
 	struct dynamic_manager_user_config
 		config; // Input/Output: dynamic manager config
@@ -177,6 +185,8 @@ struct ksu_manual_su_cmd {
 #define KSU_IOCTL_DYNAMIC_MANAGER _IOC(_IOC_READ | _IOC_WRITE, 'K', 103, 0)
 #define KSU_IOCTL_GET_MANAGERS _IOC(_IOC_READ | _IOC_WRITE, 'K', 104, 0)
 #define KSU_IOCTL_ENABLE_UID_SCANNER _IOC(_IOC_READ | _IOC_WRITE, 'K', 105, 0)
+#define KSU_IOCTL_GET_HOOK_MODE _IOC(_IOC_READ, 'K', 19, 0)
+#define KSU_IOCTL_GET_VERSION_TAG _IOC(_IOC_READ, 'K', 20, 0)
 #ifdef CONFIG_KSU_MANUAL_SU
 #define KSU_IOCTL_MANUAL_SU _IOC(_IOC_READ | _IOC_WRITE, 'K', 106, 0)
 #endif
