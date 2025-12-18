@@ -20,7 +20,7 @@
 #include "ksu.h"
 #include "su_mount_ns.h"
 
-extern int do_mount(const char *dev_name, struct path *path,
+extern int path_mount(const char *dev_name, struct path *path,
 		      const char *type_page, unsigned long flags,
 		      void *data_page);
 
@@ -157,7 +157,7 @@ static void ksu_mnt_ns_individual(void)
 	struct path root_path;
 	get_fs_root(current->fs, &root_path);
 	int pm_ret =
-		do_mount(NULL, &root_path, NULL, MS_PRIVATE | MS_REC, NULL);
+		path_mount(NULL, &root_path, NULL, MS_PRIVATE | MS_REC, NULL);
 	path_put(&root_path);
 
 	if (pm_ret < 0) {
