@@ -31,8 +31,8 @@ static apk_sign_key_t apk_sign_keys[] = {
     {EXPECTED_SIZE_5EC1CFF, EXPECTED_HASH_5EC1CFF}, // 5ec1cff/KernelSU
     {EXPECTED_SIZE_RSUNTK, EXPECTED_HASH_RSUNTK}, // rsuntk/KernelSU
     {EXPECTED_SIZE_NEKO, EXPECTED_HASH_NEKO}, // Neko/KernelSU
-    {EXPECTED_SIZE_KOWX712, EXPECTED_HASH_KOWX712} // KowSU
-    {EXPECTED_SIZE_NEXT, EXPECTED_HASH_NEXT} // KowSU
+    {EXPECTED_SIZE_KOWX712, EXPECTED_HASH_KOWX712}, // KowSU
+    {EXPECTED_SIZE_NEXT, EXPECTED_HASH_NEXT} // KernelSU-Next
 };
 
 static struct sdesc *init_sdesc(struct crypto_shash *alg)
