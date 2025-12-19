@@ -767,7 +767,7 @@ static int do_get_version_tag(void __user *arg)
 // 103. GET_HOOK_MODE - Get hook mode (KernelSU-Next Compatibility)
 static int do_get_hook_mode(void __user *arg)
 {
-	struct ksu_hook_type_cmd cmd = { 0 };
+	struct ksu_get_hook_mode_cmd cmd = { 0 };
 	const char *type = "Tracepoint";
 
 #if defined(CONFIG_KSU_MANUAL_HOOK)
